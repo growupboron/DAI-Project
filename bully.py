@@ -38,9 +38,15 @@ class Process:
         server_thread.start()
         self.log("Server is running")
 
+    def is_current_leader(self):
+        return self.is_leader
+
     def call_for_election(self):
         global election_completed
         if election_completed:
+            return
+        if self.is_current_leader():
+            self.declare_leader()
             return
         self.log("Detected a problem. Calling for election.")
         no_response = True  # Assume no process will respond
@@ -60,7 +66,7 @@ class Process:
             print(f"\033[1m\b{self.timestamp()} - No process has won the election.\033[0m")
         elif not any(self.neighbours):
             self.declare_leader()
-            
+
     def declare_leader(self):
         global election_completed
         if election_completed:
@@ -68,6 +74,7 @@ class Process:
         self.is_leader = True
         election_completed = True
         print(f"\033[1m\b{self.timestamp()} - Process {self.id} has won the election and is now the leader.\033[0m")
+        self.announce_new_leader(self.id)
 
     def election_called(self, id):
         global election_completed
@@ -85,6 +92,12 @@ class Process:
         self.log(f"Acknowledging the new leader {leader_id}")
         if self.id != leader_id:
             self.is_leader = False
+        for n in self.neighbours:
+            try:
+                proxy = ServerProxy(f"http://localhost:{port_bully + n}")
+                proxy.announce_new_leader(leader_id)
+            except Exception as e:
+                self.log(f"Failed to contact process {n}. Error: {e}")
 
     def shutdown_server(self):
         self.server.shutdown()
@@ -106,7 +119,7 @@ def main(total_processes):
     print(f"{datetime.now().strftime('%H:%M:%S.%f')} - Election complete. Shutting down servers.")
     for process in processes:
         process.shutdown_server()
-    
+
     sys.exit(0)
 
 if __name__ == "__main__":
