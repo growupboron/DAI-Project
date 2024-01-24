@@ -45,13 +45,44 @@ class Process:
     def is_current_leader(self):
         return self.is_leader
 
+    def reboot(self):
+        self.is_leader = False
+        self.call_for_election()
+
+    def check_leader(self):
+        if not self.is_leader:
+            try:
+                proxy = ServerProxy(f"http://localhost:{port_bully + self.leader_id}")
+                if not proxy.is_current_leader():
+                    self.call_for_election()
+            except:
+                self.call_for_election()
+
+    def declare_leader(self):
+        global election_completed
+        if election_completed:
+            return
+        self.is_leader = True
+        election_completed = True
+        print(f"\033[1m\b{self.timestamp()} - Process {self.id} has won the election and is now the leader.\033[0m")
+        for n in self.neighbours:
+            try:
+                proxy = ServerProxy(f"http://localhost:{port_bully + n}")
+                proxy.acknowledge_new_leader(self.id)
+            except Exception as e:
+                self.log(f"Failed to contact process {n}. Error: {e}")
+
     def call_for_election(self):
         global election_completed, message_counter
         if election_completed:
             return
-        if self.is_current_leader():
-            self.declare_leader()
-            return
+        if self.is_leader:
+            try:
+                proxy = ServerProxy(f"http://localhost:{port_bully + self.leader_id}")
+                if proxy.is_current_leader():
+                    return
+            except:
+                pass
         self.log("Detected a problem. Calling for election.")
         no_response = True  # Assume no process will respond
         for n in list(self.neighbours):  # Create a copy of the list for iteration
@@ -73,15 +104,6 @@ class Process:
         elif not any(self.neighbours):
             self.declare_leader()
 
-    def declare_leader(self):
-        global election_completed
-        if election_completed:
-            return
-        self.is_leader = True
-        election_completed = True
-        print(f"\033[1m\b{self.timestamp()} - Process {self.id} has won the election and is now the leader.\033[0m")
-        self.announce_new_leader(self.id)
-
     def election_called(self, id):
         global election_completed, message_counter
         if election_completed:
@@ -94,6 +116,21 @@ class Process:
             time.sleep(random.uniform(0.1, 1.0))
             return True
         return False
+
+    def acknowledge_new_leader(self, leader_id):
+        global election_completed, message_counter
+        election_completed = True
+        self.log(f"Acknowledging the new leader {leader_id}")
+        if self.id != leader_id:
+            self.is_leader = False
+        else:
+            for n in self.neighbours:
+                try:
+                    proxy = ServerProxy(f"http://localhost:{port_bully + n}")
+                    proxy.announce_new_leader(leader_id)
+                    message_counter += 1  # Increment the message counter
+                except Exception as e:
+                    self.log(f"Failed to contact process {n}. Error: {e}")
 
     def announce_new_leader(self, leader_id):
         global election_completed, message_counter
