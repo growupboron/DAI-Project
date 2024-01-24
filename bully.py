@@ -26,6 +26,7 @@ class Process:
         self.id = id
         self.is_leader = False
         self.total_processes = total_processes
+        self.leader_id = None 
         self.server = SimpleXMLRPCServer(
             ('localhost', port_bully + self.id),
             logRequests=False,
@@ -71,10 +72,11 @@ class Process:
         election_completed = True
         self.is_leader = True
         self.log(f"\033[1m{self.timestamp()} - \033[1mDeclaring self as the new leader\033[0m")
-        for id in range(self.id):
+        for id in range(self.total_processes):  # Change this line to send to all processes
             try:
                 proxy = ServerProxy(f"http://localhost:{port_bully + id}")
                 proxy.acknowledge_new_leader(self.id)
+                proxy.announce_new_leader(self.id)  # Add this line to send coordinator message
             except Exception as e:
                 self.log(f"{self.timestamp()} - Failed to send leader message to process {id}. Error: {e}")
             
@@ -151,6 +153,7 @@ class Process:
     def acknowledge_new_leader(self, leader_id):
         global election_completed, message_counter
         election_completed = True
+        self.leader_id = leader_id  # Add this line
         self.log(f"{self.timestamp()} - Acknowledging the new leader {leader_id}")
         if self.id != leader_id:
             self.is_leader = False
@@ -165,17 +168,19 @@ class Process:
 
     def announce_new_leader(self, leader_id):
         global election_completed, message_counter
-        election_completed = True
-        self.log(f"Acknowledging the new leader {leader_id}")
-        if self.id != leader_id:
-            self.is_leader = False
-        for n in self.neighbours:
-            try:
-                proxy = ServerProxy(f"http://localhost:{port_bully + n}")
-                proxy.announce_new_leader(leader_id)
-                message_counter += 1  # Increment the message counter
-            except Exception as e:
-                self.log(f"Failed to contact process {n}. Error: {e}")
+        if not election_completed or self.leader_id != leader_id:
+            election_completed = True
+            self.leader_id = leader_id
+            self.log(f"Acknowledging the new leader {leader_id}")
+            if self.id != leader_id:
+                self.is_leader = False
+            for n in self.neighbours:
+                try:
+                    proxy = ServerProxy(f"http://localhost:{port_bully + n}")
+                    proxy.announce_new_leader(leader_id)
+                    message_counter += 1  # Increment the message counter
+                except Exception as e:
+                    self.log(f"Failed to contact process {n}. Error: {e}")
 
     def shutdown_server(self):
         self.server.shutdown()
