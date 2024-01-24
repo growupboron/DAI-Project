@@ -16,6 +16,10 @@ election_completed = False
 # Global counter for messages
 message_counter = 0
 
+# Define upper bounds for message transmission time (T) and message processing time (M)
+T = 1.0  # seconds
+M = 0.5  # seconds
+
 class Process:
     def __init__(self, id, total_processes):
         global election_completed
@@ -101,6 +105,8 @@ class Process:
                     if response:
                         no_response = False  # If any process responds, update the flag
                     self.neighbours.remove(n)  # Remove the process from the neighbours list
+                    # Simulate message transmission time with upper bound T
+                    time.sleep(random.uniform(0, T))
                 except Exception as e:
                     self.log(f"Failed to contact process {n}. Error: {e}")
 
@@ -118,6 +124,8 @@ class Process:
 
     def election_called(self, id):
         global election_completed, message_counter
+        # Simulate message processing time with upper bound M
+        time.sleep(random.uniform(0, M))
         if election_completed:
             return False
         self.log(f"Received election call from process {id}")
