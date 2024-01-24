@@ -194,6 +194,10 @@ class Process:
                 except Exception as e:
                     self.log(f"Failed to contact process {n}. Error: {e}")
 
+    def reactivate(self):
+        self.is_leader = False
+        self.call_for_election()
+   
     def shutdown_server(self):
         self.server.shutdown()
 
@@ -209,6 +213,16 @@ def main(total_processes):
     # Wait for the election to complete
     while not election_completed:
         time.sleep(0.5)
+
+    # Randomly decide whether to reactivate a process
+    if random.randint(0, 1):
+        # Randomly select a process to reactivate
+        random_process = random.choice(processes)
+        random_process.reactivate()
+
+        # Wait for the election to complete
+        while not election_completed:
+            time.sleep(0.5)
 
     time.sleep(2)  # Additional time for any last messages
     print(f"{datetime.now().strftime('%H:%M:%S.%f')} - Election complete. Messages sent: {message_counter}. Shutting down servers.")
