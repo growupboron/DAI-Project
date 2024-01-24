@@ -56,7 +56,11 @@ class Process:
 
     def reboot(self):
         self.is_leader = False
-        self.call_for_election()
+        # Check if the current process has the highest ID
+        if self.id == self.total_processes - 1:
+            self.declare_leader()
+        else:
+            self.call_for_election()
 
     def check_leader(self):
         if not self.is_leader:
