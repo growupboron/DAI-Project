@@ -85,6 +85,12 @@ class Process:
                 pass
         self.log("Detected a problem. Calling for election.")
         no_response = True  # Assume no process will respond
+
+        # Check if current process has the highest ID
+        if self.id == self.total_processes - 1:
+            self.declare_leader()
+            return
+
         for n in list(self.neighbours):  # Create a copy of the list for iteration
             if n > self.id:
                 self.log(f"Sending election call to process {n}")
@@ -97,6 +103,12 @@ class Process:
                     self.neighbours.remove(n)  # Remove the process from the neighbours list
                 except Exception as e:
                     self.log(f"Failed to contact process {n}. Error: {e}")
+
+        # If no higher processes respond, declare self as leader
+        if not any(self.neighbours) and no_response:
+            print(f"\033[1m\b{self.timestamp()} - No process has won the election.\033[0m")
+        elif not any(self.neighbours):
+            self.declare_leader()
 
         # If no higher processes respond, declare self as leader
         if not any(self.neighbours) and no_response:
