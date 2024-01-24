@@ -4,6 +4,7 @@ from xmlrpc.client import ServerProxy
 from datetime import datetime
 import time
 import sys
+import random
 
 # Set the base port and the number of processes
 port_bully = 8000
@@ -11,6 +12,9 @@ processes_bully = 5  # Replace with the number of processes you want to simulate
 
 # Global flag to indicate election completion
 election_completed = False
+
+# Global counter for messages
+message_counter = 0
 
 class Process:
     def __init__(self, id, total_processes):
@@ -42,7 +46,7 @@ class Process:
         return self.is_leader
 
     def call_for_election(self):
-        global election_completed
+        global election_completed, message_counter
         if election_completed:
             return
         if self.is_current_leader():
@@ -56,11 +60,13 @@ class Process:
                 try:
                     proxy = ServerProxy(f"http://localhost:{port_bully + n}")
                     response = proxy.election_called(self.id)
+                    message_counter += 1  # Increment the message counter
                     if response:
                         no_response = False  # If any process responds, update the flag
                     self.neighbours.remove(n)  # Remove the process from the neighbours list
                 except Exception as e:
                     self.log(f"Failed to contact process {n}. Error: {e}")
+
         # If no higher processes respond, declare self as leader
         if not any(self.neighbours) and no_response:
             print(f"\033[1m\b{self.timestamp()} - No process has won the election.\033[0m")
@@ -77,17 +83,20 @@ class Process:
         self.announce_new_leader(self.id)
 
     def election_called(self, id):
-        global election_completed
+        global election_completed, message_counter
         if election_completed:
             return False
         self.log(f"Received election call from process {id}")
         if id < self.id:
             threading.Thread(target=self.call_for_election).start()
+            message_counter += 1  # Increment the message counter
+            # Simulate communication latency
+            time.sleep(random.uniform(0.1, 1.0))
             return True
         return False
 
     def announce_new_leader(self, leader_id):
-        global election_completed
+        global election_completed, message_counter
         election_completed = True
         self.log(f"Acknowledging the new leader {leader_id}")
         if self.id != leader_id:
@@ -96,6 +105,7 @@ class Process:
             try:
                 proxy = ServerProxy(f"http://localhost:{port_bully + n}")
                 proxy.announce_new_leader(leader_id)
+                message_counter += 1  # Increment the message counter
             except Exception as e:
                 self.log(f"Failed to contact process {n}. Error: {e}")
 
@@ -116,7 +126,7 @@ def main(total_processes):
         time.sleep(0.5)
 
     time.sleep(2)  # Additional time for any last messages
-    print(f"{datetime.now().strftime('%H:%M:%S.%f')} - Election complete. Shutting down servers.")
+    print(f"{datetime.now().strftime('%H:%M:%S.%f')} - Election complete. Messages sent: {message_counter}. Shutting down servers.")
     for process in processes:
         process.shutdown_server()
 
