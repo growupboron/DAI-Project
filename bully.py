@@ -117,10 +117,17 @@ class Process:
                 self.log(f"{self.timestamp()} - Sending election call to process {n}")
                 try:
                     proxy = ServerProxy(f"http://localhost:{port_bully + n}")
+                    start_time = time.time()  # Start the timer
                     response = proxy.election_called(self.id)
                     message_counter += 1  # Increment the message counter
                     if response == "OK":
                         no_response = False  # If any process responds with "OK", update the flag
+                    end_time = time.time()  # End the timer
+                    # If the response time exceeds the UB, assume the process has failed
+                    if end_time - start_time > 2*T + M:
+                        self.log(f"{self.timestamp()} - Process {n} failed to respond within UB. Declaring self as leader.")
+                        self.declare_leader()
+                        return
                     self.neighbours.remove(n)  # Remove the process from the neighbours list
                     # Simulate message transmission time with upper bound T
                     time.sleep(random.uniform(0, T))
@@ -132,7 +139,7 @@ class Process:
             print(f"\033[1m\b{self.timestamp()} - No process has won the election.\033[0m")
         elif not any(self.neighbours):
             self.declare_leader()
-
+            
     def election_called(self, id):
         global election_completed, message_counter
         # Simulate message processing time with upper bound M
