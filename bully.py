@@ -105,7 +105,6 @@ class Process:
             except:
                 pass
         self.log(f"{self.timestamp()} - Detected a problem. Calling for election.")
-        no_response = True  # Assume no process will respond
 
         # Check if current process has the highest ID
         if self.id == self.total_processes - 1:
@@ -148,7 +147,9 @@ class Process:
             return False
         self.log(f"{self.timestamp()} - Received election call from process {id}")
         if id < self.id:
-            threading.Thread(target=self.call_for_election).start()
+            # Only start a new election if this process has a higher ID
+            if self.id > id:
+                threading.Thread(target=self.call_for_election).start()
             message_counter += 1  # Increment the message counter
             # Simulate communication latency
             time.sleep(random.uniform(0.1, 1.0))
