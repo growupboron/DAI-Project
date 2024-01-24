@@ -87,6 +87,15 @@ class Process:
                     return
             except:
                 pass
+        else:
+            # Check if the current leader is still active
+            try:
+                proxy = ServerProxy(f"http://localhost:{port_bully + self.leader_id}")
+                if proxy.is_current_leader():
+                    # If the leader is still active, do not initiate an election
+                    return
+            except:
+                pass
         self.log("Detected a problem. Calling for election.")
         no_response = True  # Assume no process will respond
 
