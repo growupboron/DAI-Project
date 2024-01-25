@@ -10,9 +10,6 @@ import random
 port_bully = 8000
 processes_bully = 5  # Replace with the number of processes you want to simulate
 
-# Global flag to indicate election completion
-election_completed = False
-
 # Global counter for messages
 message_counter = 0
 
@@ -22,7 +19,6 @@ M = 0.5  # seconds
 
 class Process:
     def __init__(self, id, total_processes):
-        global election_completed
         self.id = id
         self.is_leader = False
         self.total_processes = total_processes
@@ -72,8 +68,8 @@ class Process:
                 self.call_for_election()
 
     def declare_leader(self):
-        global election_completed, message_counter
-        election_completed = True
+        global message_counter
+        self.acknowledged_leader = True
         self.is_leader = True
         self.log(f"\033[1m{self.timestamp()} - \033[1mDeclaring self as the new leader\033[0m")
         for id in range(self.total_processes):  # Change this line to send to all processes
@@ -85,8 +81,8 @@ class Process:
                 self.log(f"{self.timestamp()} - Failed to send leader message to process {id}. Error: {e}")
             
     def call_for_election(self):
-        global election_completed, message_counter
-        if election_completed:
+        global message_counter
+        if self.acknowledged_leader:
             return
         if self.is_leader:
             try:
@@ -140,10 +136,10 @@ class Process:
             self.declare_leader()
             
     def election_called(self, id):
-        global election_completed, message_counter
+        global message_counter
         # Simulate message processing time with upper bound M
         time.sleep(random.uniform(0, M))
-        if election_completed:
+        if self.acknowledged_leader:
             return False
         self.log(f"{self.timestamp()} - Received election call from process {id}")
         if id < self.id:
@@ -163,8 +159,8 @@ class Process:
         return "NO"  # Do not send an "OK" message
 
     def acknowledge_new_leader(self, leader_id):
-        global election_completed, message_counter
-        election_completed = True
+        global message_counter
+        self.acknowledged_leader = True
         self.leader_id = leader_id  # Add this line
         self.log(f"{self.timestamp()} - Acknowledging the new leader {leader_id}")
         if self.id != leader_id:
@@ -179,9 +175,9 @@ class Process:
                     self.log(f"{self.timestamp()} - Failed to contact process {n}. Error: {e}")
 
     def announce_new_leader(self, leader_id):
-        global election_completed, message_counter
-        if not election_completed or self.leader_id != leader_id:
-            election_completed = True
+        global message_counter
+        if not self.acknowledged_leader or self.leader_id != leader_id: 
+            self.acknowledged_leader = True 
             self.leader_id = leader_id
             self.log(f"Acknowledging the new leader {leader_id}")
             if self.id != leader_id:
@@ -211,7 +207,7 @@ def main(total_processes):
     processes[0].call_for_election()
 
     # Wait for the election to complete
-    while not election_completed:
+    while not all(p.acknowledged_leader for p in processes):
         time.sleep(0.5)
 
     # Randomly decide whether to reactivate a process
@@ -221,7 +217,7 @@ def main(total_processes):
         random_process.reactivate()
 
         # Wait for the election to complete
-        while not election_completed:
+        while not all(p.acknowledged_leader for p in processes):
             time.sleep(0.5)
 
     time.sleep(2)  # Additional time for any last messages
