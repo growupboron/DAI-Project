@@ -69,14 +69,20 @@ class Process:
         self.acknowledged_leader = True
         self.is_leader = True
         self.log(f"\033[1m{self.timestamp()} - \033[1mDeclaring self as the new leader\033[0m")
+        ack_counter = 0  # Counter for acknowledgements
         for id in range(self.total_processes):
             try:
                 proxy = ServerProxy(f"http://localhost:{port_bully + id}")
-                proxy.acknowledge_new_leader(self.id)
+                ack = proxy.acknowledge_new_leader(self.id)
+                if ack == "OK":
+                    ack_counter += 1  # Increment the counter if acknowledgement received
                 proxy.announce_new_leader(self.id)
                 self.message_counter += 1  # Increment the message counter
             except Exception as e:
                 self.log(f"{self.timestamp()} - Failed to send leader message to process {id}. Error: {e}")
+        # Wait until all processes have acknowledged the new leader
+        while ack_counter < self.total_processes:
+            time.sleep(0.5)  # Wait for a short period before checking again
 
             
     def call_for_election(self):
@@ -170,6 +176,7 @@ class Process:
                     self.message_counter += 1  # Increment the message counter
                 except Exception as e:
                     self.log(f"{self.timestamp()} - Failed to contact process {n}. Error: {e}")
+        return "OK"  # Return an "OK" message to indicate acknowledgement
 
     def announce_new_leader(self, leader_id):
         if not self.acknowledged_leader or self.leader_id != leader_id: 
