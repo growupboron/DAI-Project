@@ -70,18 +70,17 @@ class Process:
         self.is_leader = True
         self.log(f"\033[1m{self.timestamp()} - \033[1mDeclaring self as the new leader\033[0m")
         ack_counter = 0  # Counter for acknowledgements
-        for id in range(self.total_processes):
-            try:
-                proxy = ServerProxy(f"http://localhost:{port_bully + id}")
-                ack = proxy.acknowledge_new_leader(self.id)
-                if ack == "OK":
-                    ack_counter += 1  # Increment the counter if acknowledgement received
-                proxy.announce_new_leader(self.id)
-                self.message_counter += 1  # Increment the message counter
-            except Exception as e:
-                self.log(f"{self.timestamp()} - Failed to send leader message to process {id}. Error: {e}")
-        # Wait until all processes have acknowledged the new leader
         while ack_counter < self.total_processes:
+            for id in range(self.total_processes):
+                try:
+                    proxy = ServerProxy(f"http://localhost:{port_bully + id}")
+                    ack = proxy.acknowledge_new_leader(self.id)
+                    if ack == "OK":
+                        ack_counter += 1  # Increment the counter if acknowledgement received
+                    proxy.announce_new_leader(self.id)
+                    self.message_counter += 1  # Increment the message counter
+                except Exception as e:
+                    self.log(f"{self.timestamp()} - Failed to send leader message to process {id}. Error: {e}")
             time.sleep(0.5)  # Wait for a short period before checking again
 
             
@@ -200,7 +199,7 @@ class Process:
     def shutdown_server(self):
         self.server.shutdown()
 
-def main(total_processes):
+def main(total_processes, num_reactivations):
     processes = [Process(i, total_processes) for i in range(total_processes)]
 
     for process in processes:
@@ -213,15 +212,16 @@ def main(total_processes):
     while not all(p.acknowledged_leader for p in processes):
         time.sleep(0.5)
 
-    # Randomly decide whether to reactivate a process
-    if random.randint(0, 1):
-        # Randomly select a process to reactivate
-        random_process = random.choice(processes)
-        random_process.reactivate()
+    for _ in range(num_reactivations):
+        # Randomly decide whether to reactivate a process
+        if random.randint(0, 1):
+            # Randomly select a process to reactivate
+            random_process = random.choice(processes)
+            random_process.reactivate()
 
-        # Wait for the election to complete
-        while not all(p.acknowledged_leader for p in processes):
-            time.sleep(0.5)
+            # Wait for the election to complete
+            while not all(p.acknowledged_leader for p in processes):
+                time.sleep(0.5)
 
     time.sleep(2)  # Additional time for any last messages
     for i, process in enumerate(processes):
@@ -232,6 +232,9 @@ def main(total_processes):
         process.shutdown_server()
 
     sys.exit(0)
+
+if __name__ == "__main__":
+    main(processes_bully, num_reactivations=5)  # Run the simulation with 5 reactivation tests
 
 if __name__ == "__main__":
     main(processes_bully)
