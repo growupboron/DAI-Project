@@ -10,9 +10,6 @@ import random
 port_bully = 8000
 processes_bully = 5  # Replace with the number of processes you want to simulate
 
-# Global counter for messages
-message_counter = 0
-
 # Define upper bounds for message transmission time (T) and message processing time (M)
 T = 1.0  # seconds
 M = 0.5  # seconds
@@ -31,6 +28,7 @@ class Process:
         self.server.register_instance(self)
         self.neighbours = [i for i in range(total_processes) if i != id]
         self.acknowledged_leader = False
+        self.message_counter = 0
 
     def timestamp(self):
         return datetime.now().strftime("%H:%M:%S.%f")
@@ -68,20 +66,20 @@ class Process:
                 self.call_for_election()
 
     def declare_leader(self):
-        global message_counter
         self.acknowledged_leader = True
         self.is_leader = True
         self.log(f"\033[1m{self.timestamp()} - \033[1mDeclaring self as the new leader\033[0m")
-        for id in range(self.total_processes):  # Change this line to send to all processes
+        for id in range(self.total_processes):
             try:
                 proxy = ServerProxy(f"http://localhost:{port_bully + id}")
                 proxy.acknowledge_new_leader(self.id)
-                proxy.announce_new_leader(self.id)  # Add this line to send coordinator message
+                proxy.announce_new_leader(self.id)
+                self.message_counter += 1  # Increment the message counter
             except Exception as e:
                 self.log(f"{self.timestamp()} - Failed to send leader message to process {id}. Error: {e}")
+
             
     def call_for_election(self):
-        global message_counter
         if self.acknowledged_leader:
             return
         if self.is_leader:
@@ -114,7 +112,7 @@ class Process:
                     proxy = ServerProxy(f"http://localhost:{port_bully + n}")
                     start_time = time.time()  # Start the timer
                     response = proxy.election_called(self.id)
-                    message_counter += 1  # Increment the message counter
+                    self.message_counter += 1  # Increment the message counter
                     if response == "OK":
                         no_response = False  # If any process responds with "OK", update the flag
                     end_time = time.time()  # End the timer
@@ -136,7 +134,6 @@ class Process:
             self.declare_leader()
             
     def election_called(self, id):
-        global message_counter
         # Simulate message processing time with upper bound M
         time.sleep(random.uniform(0, M))
         if self.acknowledged_leader:
@@ -146,7 +143,7 @@ class Process:
             # Only start a new election if this process has a higher ID
             if self.id > id:
                 threading.Thread(target=self.call_for_election).start()
-            message_counter += 1  # Increment the message counter
+            self.message_counter += 1  # Increment the message counter
             # Simulate communication latency
             time.sleep(random.uniform(0.1, 1.0))
             self.log(f"{self.timestamp()} - Sending OK message to process {id}")
@@ -159,9 +156,8 @@ class Process:
         return "NO"  # Do not send an "OK" message
 
     def acknowledge_new_leader(self, leader_id):
-        global message_counter
         self.acknowledged_leader = True
-        self.leader_id = leader_id  # Add this line
+        self.leader_id = leader_id
         self.log(f"{self.timestamp()} - Acknowledging the new leader {leader_id}")
         if self.id != leader_id:
             self.is_leader = False
@@ -170,12 +166,11 @@ class Process:
                 try:
                     proxy = ServerProxy(f"http://localhost:{port_bully + n}")
                     proxy.announce_new_leader(leader_id)
-                    message_counter += 1  # Increment the message counter
+                    self.message_counter += 1  # Increment the message counter
                 except Exception as e:
                     self.log(f"{self.timestamp()} - Failed to contact process {n}. Error: {e}")
 
     def announce_new_leader(self, leader_id):
-        global message_counter
         if not self.acknowledged_leader or self.leader_id != leader_id: 
             self.acknowledged_leader = True 
             self.leader_id = leader_id
@@ -186,7 +181,7 @@ class Process:
                 try:
                     proxy = ServerProxy(f"http://localhost:{port_bully + n}")
                     proxy.announce_new_leader(leader_id)
-                    message_counter += 1  # Increment the message counter
+                    self.message_counter += 1  # Increment the message counter
                 except Exception as e:
                     self.log(f"Failed to contact process {n}. Error: {e}")
 
@@ -221,7 +216,10 @@ def main(total_processes):
             time.sleep(0.5)
 
     time.sleep(2)  # Additional time for any last messages
-    print(f"{datetime.now().strftime('%H:%M:%S.%f')} - Election complete. Messages sent: {message_counter}. Shutting down servers.")
+    for i, process in enumerate(processes):
+        print(f"{datetime.now().strftime('%H:%M:%S.%f')} - Process {i} sent {process.message_counter} messages.")
+    total_messages_sent = sum(p.message_counter for p in processes)
+    print(f"{datetime.now().strftime('%H:%M:%S.%f')} - Election complete. Messages sent: {total_messages_sent}. Shutting down servers.")
     for process in processes:
         process.shutdown_server()
 
