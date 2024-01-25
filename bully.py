@@ -105,6 +105,8 @@ class Process:
             self.declare_leader()
             return
 
+        no_response = True  # Initialize no_response to True before the loop
+
         for n in list(self.neighbours):  # Create a copy of the list for iteration
             if n > self.id:
                 self.log(f"{self.timestamp()} - Sending election call to process {n}")
@@ -126,12 +128,11 @@ class Process:
                     time.sleep(random.uniform(0, T))
                 except Exception as e:
                     self.log(f"{self.timestamp()} - Failed to contact process {n}. Error: {e}")
-
         # If no higher processes respond, declare self as leader
         if not any(self.neighbours) and no_response:
             print(f"\033[1m\b{self.timestamp()} - No process has won the election.\033[0m")
         elif not any(self.neighbours):
-            self.declare_leader()
+            self.declare_leader()   
             
     def election_called(self, id):
         # Simulate message processing time with upper bound M
@@ -140,9 +141,10 @@ class Process:
             return False
         self.log(f"{self.timestamp()} - Received election call from process {id}")
         if id < self.id:
-            # Only start a new election if this process has a higher ID
-            if self.id > id:
-                threading.Thread(target=self.call_for_election).start()
+            # Start a new election if this process has a higher ID
+            threading.Thread(target=self.call_for_election).start()
+            return "NO"  # Do not send an "OK" message
+        else:
             self.message_counter += 1  # Increment the message counter
             # Simulate communication latency
             time.sleep(random.uniform(0.1, 1.0))
@@ -153,8 +155,7 @@ class Process:
             except Exception as e:
                 self.log(f"{self.timestamp()} - Failed to send OK message to process {id}. Error: {e}")
             return "OK"  # Send an "OK" message
-        return "NO"  # Do not send an "OK" message
-
+    
     def acknowledge_new_leader(self, leader_id):
         self.acknowledged_leader = True
         self.leader_id = leader_id
