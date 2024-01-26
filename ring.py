@@ -53,20 +53,26 @@ class RingProcess:
             self.log(f"Failed to contact process {self.successor}. Error: {e}")
 
     def receive_coordinator_message(self, leader_id):
+        self.message_count += 1
         self.log(f"Received coordinator message. Process {leader_id} is the leader.")
         if self.id != leader_id:  # Only forward the message if this process is not the leader
             self.send_coordinator_message(leader_id)
+            self.log(f"Acknowledged process {leader_id} as the leader.")
         else:
             self.log("Coordinator message has circulated back to the leader. Shutting down.")
-            self.shutdown_server()
+            self.shutdown()
+
+    def log(self, message):
+        print(f"\033[1m{self.timestamp()} - Process {self.id}:\033[0m {message}")
 
     def send_election_message(self, election_message):
         self.message_count += 1
+        self.log(f"Sending election message to process {self.successor}")
         if self.id == election_message[0]:  # If the message has circulated back to the initiator
             # Election is complete
             leader_id = max(election_message)
-            leader_announcement = self.bold_text(f"Process {leader_id} is the leader")
-            self.log(f"Election complete. {leader_announcement}.")
+            leader_announcement = self.bold_text(f"Election complete. Process {leader_id} is the leader.")
+            self.log(leader_announcement)
             self.log(f"Total messages exchanged: {self.message_count}")
             self.send_coordinator_message(leader_id)  # Send COORDINATOR message
         else:
@@ -78,21 +84,26 @@ class RingProcess:
                 try:
                     proxy = ServerProxy(f"http://localhost:{port_ring + next_process}")
                     proxy.receive_election_message(election_message)
+                    self.log(f"Successfully forwarded election message to process {next_process}")
                     break  # If the message was successfully sent, break the loop
                 except Exception as e:
                     self.log(f"Failed to contact process {next_process}. Error: {e}")
                     next_process = (next_process + 1) % self.total_processes  # Move to the next process
 
     def receive_election_message(self, election_message):
-        self.message_count += 1
+        self.log(f"Received election message from process {self.id}")
+        self.log(f"Processing election message...")
         self.send_election_message(election_message)
+        self.log(f"Forwarded election message to process {self.successor}")
 
     def announce_leader(self, leader_id):
         leader_announcement = self.bold_text(f"Process {leader_id} is the leader")
         self.log(f"Election Announcement: {leader_announcement}")
 
-    def shutdown_server(self):
-        self.server.shutdown()
+    def shutdown(self):
+        self.log("Shutting down.")
+        shutdown_thread = threading.Thread(target=self.server.shutdown)
+        shutdown_thread.start()
 
 def main(total_processes):
     ring_processes = [RingProcess(i, total_processes) for i in range(total_processes)]
@@ -103,8 +114,25 @@ def main(total_processes):
     time.sleep(2)
     
     # Start the election from a random process with a higher ID
-    initiator = random.randint(1, total_processes - 1)  # Random process ID
+    initiator = random.randint(0, total_processes - 1)  # Random process ID
+    #initiator = 0
     ring_processes[initiator].call_for_election()
+
+    # Wait for the election to complete
+    time.sleep(5)
+
+    # Print a summary of messages sent
+    total_messages = sum(process.message_count for process in ring_processes)
+    timestamp = ring_processes[0].timestamp()  # Get the current time using the timestamp method
+    print(f"{timestamp} - Total messages exchanged: {total_messages}")
+
+    # Print the number of messages sent by each process
+    for process in ring_processes:
+        print(f"Process {process.id} sent {process.message_count} messages")
+
+    # Shut down all processes
+    for process in ring_processes:
+        process.shutdown()
 
 if __name__ == "__main__":
     main(processes_ring)
