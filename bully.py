@@ -29,6 +29,7 @@ class Process:
         self.neighbours = [i for i in range(total_processes) if i != id]
         self.acknowledged_leader = False
         self.message_counter = 0
+        self.lock = threading.Lock()
 
     def timestamp(self):
         return datetime.now().strftime("%H:%M:%S.%f")
@@ -95,49 +96,45 @@ class Process:
             except:
                 pass
         else:
-            # Check if the current leader is still active
             try:
                 proxy = ServerProxy(f"http://localhost:{port_bully + self.leader_id}")
                 if proxy.is_current_leader():
-                    # If the leader is still active, do not initiate an election
                     return
             except:
                 pass
         self.log(f"{self.timestamp()} - Detected a problem. Calling for election.")
 
-        # Check if current process has the highest ID
-        if self.id == self.total_processes - 1:
+        if self.id == max(self.neighbours):
             self.declare_leader()
             return
 
-        no_response = True  # Initialize no_response to True before the loop
+        no_response = True
 
-        for n in list(self.neighbours):  # Create a copy of the list for iteration
+        for n in list(self.neighbours):
             if n > self.id:
                 self.log(f"{self.timestamp()} - Sending election call to process {n}")
                 try:
                     proxy = ServerProxy(f"http://localhost:{port_bully + n}")
-                    start_time = time.time()  # Start the timer
+                    start_time = time.time()
                     response = proxy.election_called(self.id)
-                    self.message_counter += 1  # Increment the message counter
+                    self.message_counter += 1
                     if response == "OK":
-                        no_response = False  # If any process responds with "OK", update the flag
-                    end_time = time.time()  # End the timer
-                    # If the response time exceeds the UB, assume the process has failed
+                        no_response = False
+                    end_time = time.time()
                     if end_time - start_time > 2*T + M:
-                        self.log(f"{self.timestamp()} - Process {n} failed to respond within UB. Declaring self as leader.")
-                        self.declare_leader()
-                        return
-                    self.neighbours.remove(n)  # Remove the process from the neighbours list
-                    # Simulate message transmission time with upper bound T
+                        self.log(f"{self.timestamp()} - Process {n} failed to respond within UB.")
+                        no_response = True
                     time.sleep(random.uniform(0, T))
                 except Exception as e:
                     self.log(f"{self.timestamp()} - Failed to contact process {n}. Error: {e}")
-        # If no higher processes respond, declare self as leader
-        if not any(self.neighbours) and no_response:
-            print(f"\033[1m\b{self.timestamp()} - No process has won the election.\033[0m")
-        elif not any(self.neighbours):
-            self.declare_leader()   
+                finally:
+                    with self.lock:
+                        if n in self.neighbours:
+                            if response != "OK":
+                                self.neighbours.remove(n)
+
+        if no_response:
+            self.declare_leader()
             
     def election_called(self, id):
         # Simulate message processing time with upper bound M
@@ -145,10 +142,9 @@ class Process:
         if self.acknowledged_leader:
             return False
         self.log(f"{self.timestamp()} - Received election call from process {id}")
-        if id < self.id:
-            # Start a new election if this process has a higher ID
+        if id < self.id and not self.acknowledged_leader:
             threading.Thread(target=self.call_for_election).start()
-            return "NO"  # Do not send an "OK" message
+            return "NO"
         else:
             self.message_counter += 1  # Increment the message counter
             # Simulate communication latency
@@ -168,13 +164,13 @@ class Process:
         if self.id != leader_id:
             self.is_leader = False
         else:
-            for n in self.neighbours:
+            for n in [i for i in self.neighbours if i < self.id]:
                 try:
                     proxy = ServerProxy(f"http://localhost:{port_bully + n}")
                     proxy.announce_new_leader(leader_id)
-                    self.message_counter += 1  # Increment the message counter
+                    self.message_counter += 1
                 except Exception as e:
-                    self.log(f"{self.timestamp()} - Failed to contact process {n}. Error: {e}")
+                    self.log(f"Failed to contact process {n}. Error: {e}")
         return "OK"  # Return an "OK" message to indicate acknowledgement
 
     def announce_new_leader(self, leader_id):
@@ -184,11 +180,11 @@ class Process:
             self.log(f"Acknowledging the new leader {leader_id}")
             if self.id != leader_id:
                 self.is_leader = False
-            for n in self.neighbours:
+            for n in [i for i in self.neighbours if i < self.id]:
                 try:
                     proxy = ServerProxy(f"http://localhost:{port_bully + n}")
                     proxy.announce_new_leader(leader_id)
-                    self.message_counter += 1  # Increment the message counter
+                    self.message_counter += 1
                 except Exception as e:
                     self.log(f"Failed to contact process {n}. Error: {e}")
 
@@ -224,6 +220,19 @@ def main(total_processes, num_reactivations):
                 time.sleep(0.5)
 
     time.sleep(2)  # Additional time for any last messages
+
+    # Wait until a leader is elected
+    while not any(p.is_leader for p in processes):
+        time.sleep(0.5)
+
+    # Check if a leader has been elected
+    leader_elected = any(p.is_leader for p in processes)
+    if leader_elected:
+        leader_id = next(p.id for p in processes if p.is_leader)
+        print(f"\033[1m{datetime.now().strftime('%H:%M:%S.%f')} - Final leader elected: Process {leader_id}\033[0m")
+    else:
+        print(f"\033[1m{datetime.now().strftime('%H:%M:%S.%f')} - No leader elected\033[0m")
+
     for i, process in enumerate(processes):
         print(f"{datetime.now().strftime('%H:%M:%S.%f')} - Process {i} sent {process.message_counter} messages.")
     total_messages_sent = sum(p.message_counter for p in processes)
@@ -235,6 +244,3 @@ def main(total_processes, num_reactivations):
 
 if __name__ == "__main__":
     main(processes_bully, num_reactivations=5)  # Run the simulation with 5 reactivation tests
-
-if __name__ == "__main__":
-    main(processes_bully)
