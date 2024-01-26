@@ -190,10 +190,20 @@ class Process:
 
     def reactivate(self):
         self.is_leader = False
-        self.call_for_election()
-   
+        # Check if the current process has the highest ID
+        if self.id == self.total_processes - 1:
+            self.declare_leader()
+        else:
+            # Only call for an election if the current leader is down
+            try:
+                proxy = ServerProxy(f"http://localhost:{port_bully + self.leader_id}")
+                if not proxy.is_current_leader():
+                    self.call_for_election()
+            except:
+                self.call_for_election()
+
     def shutdown_server(self):
-        self.server.shutdown()
+        self.server.server_close()
 
 def main(total_processes, num_reactivations):
     processes = [Process(i, total_processes) for i in range(total_processes)]
@@ -243,4 +253,4 @@ def main(total_processes, num_reactivations):
     sys.exit(0)
 
 if __name__ == "__main__":
-    main(processes_bully, num_reactivations=5)  # Run the simulation with 5 reactivation tests
+    main(processes_bully, num_reactivations = 5)  # Run the simulation with 5 reactivation tests
