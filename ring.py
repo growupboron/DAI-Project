@@ -44,6 +44,22 @@ class RingProcess:
         # Initialize election message with own ID
         self.send_election_message([self.id])
 
+    def send_coordinator_message(self, leader_id):
+        self.log(f"Sending coordinator message to process {self.successor}")
+        try:
+            proxy = ServerProxy(f"http://localhost:{port_ring + self.successor}")
+            proxy.receive_coordinator_message(leader_id)
+        except Exception as e:
+            self.log(f"Failed to contact process {self.successor}. Error: {e}")
+
+    def receive_coordinator_message(self, leader_id):
+        self.log(f"Received coordinator message. Process {leader_id} is the leader.")
+        if self.id != leader_id:  # Only forward the message if this process is not the leader
+            self.send_coordinator_message(leader_id)
+        else:
+            self.log("Coordinator message has circulated back to the leader. Shutting down.")
+            self.shutdown_server()
+
     def send_election_message(self, election_message):
         self.message_count += 1
         if self.id == election_message[0]:  # If the message has circulated back to the initiator
@@ -52,17 +68,20 @@ class RingProcess:
             leader_announcement = self.bold_text(f"Process {leader_id} is the leader")
             self.log(f"Election complete. {leader_announcement}.")
             self.log(f"Total messages exchanged: {self.message_count}")
-            self.announce_leader(leader_id)
-            sys.exit(0)
+            self.send_coordinator_message(leader_id)  # Send COORDINATOR message
         else:
             # Add own ID to the election message and send to the successor
             election_message.append(self.id)
-            self.log(f"Forwarding election message to process {self.successor}")
-            try:
-                proxy = ServerProxy(f"http://localhost:{port_ring + self.successor}")
-                proxy.receive_election_message(election_message)
-            except Exception as e:
-                self.log(f"Failed to contact successor process {self.successor}. Error: {e}")
+            next_process = self.successor
+            while True:
+                self.log(f"Trying to forward election message to process {next_process}")
+                try:
+                    proxy = ServerProxy(f"http://localhost:{port_ring + next_process}")
+                    proxy.receive_election_message(election_message)
+                    break  # If the message was successfully sent, break the loop
+                except Exception as e:
+                    self.log(f"Failed to contact process {next_process}. Error: {e}")
+                    next_process = (next_process + 1) % self.total_processes  # Move to the next process
 
     def receive_election_message(self, election_message):
         self.message_count += 1
