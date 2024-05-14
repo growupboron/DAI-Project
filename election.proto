@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+service Election {
+  rpc InitiateElection (ElectionRequest) returns (ElectionResponse);
+  rpc RespondToElection (ElectionRequest) returns (ElectionResponse);
+}
+
+message ElectionRequest {
+  int32 process_id = 1;
+}
+
+message ElectionResponse {
+  int32 elected_leader_id = 1;
+}
