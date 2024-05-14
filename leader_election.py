@@ -5,10 +5,7 @@ import logging
 import election_pb2
 import election_pb2_grpc
 import matplotlib.pyplot as plt
-import random
-import threading
 
-# Set up logging to capture messages for visualization
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
 class BullyElectionService(election_pb2_grpc.ElectionServicer):
@@ -62,6 +59,7 @@ class RingElectionService(election_pb2_grpc.ElectionServicer):
         self.next_peer = self.find_next_peer()
         self.election_messages = 0
         self.election_message = []
+        self.coordinator_message_sent = False
 
     def find_next_peer(self):
         current_index = self.all_peers.index(f"localhost:5005{self.process_id}")
@@ -69,33 +67,43 @@ class RingElectionService(election_pb2_grpc.ElectionServicer):
         return self.all_peers[next_index]
 
     def InitiateElection(self, request, context):
-        logging.info(f'Process {self.process_id} initiating election with message: {request.process_id}')
+        logging.info(f'Process {self.process_id} received election message from {request.process_id}')
         if request.process_id not in self.election_message:
             self.election_message.append(request.process_id)
             self.forward_message(request.process_id)
-        return election_pb2.ElectionResponse(elected_leader_id=max(self.election_message))
+        if len(self.election_message) == len(self.all_peers):
+            leader_id = max(self.election_message)
+            self.send_coordinator_message(leader_id)
+            self.leader_id = leader_id
+            return election_pb2.ElectionResponse(elected_leader_id=leader_id)
+        return election_pb2.ElectionResponse(elected_leader_id=None)
 
     def forward_message(self, process_id):
-        logging.info(f'Process {self.process_id} forwarding election message to {self.next_peer}')
-        try:
-            with grpc.insecure_channel(self.next_peer) as channel:
-                stub = election_pb2_grpc.ElectionStub(channel)
-                request = election_pb2.ElectionRequest(process_id=process_id)
-                stub.InitiateElection(request)
-                self.election_messages += 1
-        except grpc.RpcError as e:
-            logging.info(f'Process {self.process_id} failed to forward message to {self.next_peer}: {e}')
+        if not self.coordinator_message_sent:
+            logging.info(f'Process {self.process_id} forwarding election message to {self.next_peer}')
+            try:
+                with grpc.insecure_channel(self.next_peer) as channel:
+                    stub = election_pb2_grpc.ElectionStub(channel)
+                    request = election_pb2.ElectionRequest(process_id=process_id)
+                    response = stub.InitiateElection(request)
+                    self.election_messages += 1
+                    if response.elected_leader_id is not None:
+                        self.leader_id = response.elected_leader_id
+            except grpc.RpcError as e:
+                logging.info(f'Process {self.process_id} failed to forward message to {self.next_peer}: {e}')
 
     def send_coordinator_message(self, leader_id):
-        logging.info(f'Process {self.process_id} sending coordinator message with leader ID: {leader_id}')
-        try:
-            with grpc.insecure_channel(self.next_peer) as channel:
-                stub = election_pb2_grpc.ElectionStub(channel)
-                request = election_pb2.ElectionRequest(process_id=leader_id)
-                stub.InitiateElection(request)
-                self.election_messages += 1
-        except grpc.RpcError as e:
-            logging.info(f'Process {self.process_id} failed to send coordinator message to {self.next_peer}: {e}')
+        if not self.coordinator_message_sent:
+            logging.info(f'Process {self.process_id} sending coordinator message with leader ID: {leader_id}')
+            self.coordinator_message_sent = True
+            try:
+                with grpc.insecure_channel(self.next_peer) as channel:
+                    stub = election_pb2_grpc.ElectionStub(channel)
+                    request = election_pb2.ElectionRequest(process_id=leader_id)
+                    stub.InitiateElection(request)
+                    self.election_messages += 1
+            except grpc.RpcError as e:
+                logging.info(f'Process {self.process_id} failed to send coordinator message to {self.next_peer}: {e}')
 
 def serve_ring(process_id, peers, all_peers):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
@@ -114,12 +122,7 @@ def run_ring_election(process_id, peers, all_peers):
     with grpc.insecure_channel(f'localhost:5005{process_id}') as channel:
         stub = election_pb2_grpc.ElectionStub(channel)
         response = stub.InitiateElection(election_pb2.ElectionRequest(process_id=process_id))
-    service = RingElectionService(process_id, peers, all_peers)
-    if service.election_message:
-        highest_id = max(service.election_message)
-        service.send_coordinator_message(highest_id)
-        service.leader_id = highest_id
-    return service.election_messages, service.leader_id
+    return response.elected_leader_id, response.elected_leader_id
 
 def visualize_elections():
     num_processes = 5
@@ -160,12 +163,10 @@ def visualize_elections():
     # Run Ring Algorithm
     for process_id in range(num_processes):
         logging.info(f'Starting Ring Algorithm for Process {process_id}')
-        with grpc.insecure_channel(f'localhost:5005{process_id}') as channel:
-            stub = election_pb2_grpc.ElectionStub(channel)
-            response = stub.InitiateElection(election_pb2.ElectionRequest(process_id=process_id))
-        ring_messages.append(response.elected_leader_id)
-        if response.elected_leader_id is not None:
-            ring_leader = response.elected_leader_id
+        messages, leader = run_ring_election(process_id, peers, all_peers)
+        ring_messages.append(messages)
+        if leader is not None:
+            ring_leader = leader
 
     # Stop Ring Servers
     for server in ring_servers:
