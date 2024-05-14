@@ -20,7 +20,7 @@ class BullyElectionService(election_pb2_grpc.ElectionServicer):
         self.election_messages += 1
         if request.process_id > self.process_id:
             logging.info(f'Process {self.process_id} acknowledges {request.process_id} as leader')
-            return election_pb2.ElectionResponse(elected_leader_id=request.process_id)
+            return election_pb2.ElectionResponse(elected_leader_id=request.process_id, election_messages=self.election_messages)
         else:
             max_id = self.process_id
             logging.info(f'Process {self.process_id} initiating election among peers')
@@ -30,18 +30,18 @@ class BullyElectionService(election_pb2_grpc.ElectionServicer):
                         stub = election_pb2_grpc.ElectionStub(channel)
                         response = stub.RespondToElection(election_pb2.ElectionRequest(process_id=self.process_id))
                         max_id = max(max_id, response.elected_leader_id)
-                        self.election_messages += 1
+                        self.election_messages += response.election_messages + 1
                         logging.info(f'Process {self.process_id} received response from {peer} with leader ID {response.elected_leader_id}')
                 except grpc.RpcError:
                     logging.info(f'Process {self.process_id} failed to contact {peer}')
                     continue
             self.leader_id = max_id
-            return election_pb2.ElectionResponse(elected_leader_id=max_id)
+            return election_pb2.ElectionResponse(elected_leader_id=max_id, election_messages=self.election_messages)
 
     def RespondToElection(self, request, context):
         logging.info(f'Process {self.process_id} received election response from {request.process_id}')
         self.election_messages += 1
-        return election_pb2.ElectionResponse(elected_leader_id=self.process_id)
+        return election_pb2.ElectionResponse(elected_leader_id=self.process_id, election_messages=self.election_messages)
 
 def serve_bully(process_id, peers):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
@@ -58,7 +58,7 @@ class RingElectionService(election_pb2_grpc.ElectionServicer):
         self.leader_id = None
         self.next_peer = self.find_next_peer()
         self.election_messages = 0
-        self.election_message = []
+        self.received_messages = set()
         self.coordinator_message_sent = False
 
     def find_next_peer(self):
@@ -68,15 +68,16 @@ class RingElectionService(election_pb2_grpc.ElectionServicer):
 
     def InitiateElection(self, request, context):
         logging.info(f'Process {self.process_id} received election message from {request.process_id}')
-        if request.process_id not in self.election_message:
-            self.election_message.append(request.process_id)
+        self.election_messages += 1
+        if request.process_id not in self.received_messages:
+            self.received_messages.add(request.process_id)
             self.forward_message(request.process_id)
-        if len(self.election_message) == len(self.all_peers):
-            leader_id = max(self.election_message)
+        if len(self.received_messages) == len(self.all_peers):
+            leader_id = max(self.received_messages)
             self.send_coordinator_message(leader_id)
             self.leader_id = leader_id
-            return election_pb2.ElectionResponse(elected_leader_id=leader_id)
-        return election_pb2.ElectionResponse(elected_leader_id=None)
+            return election_pb2.ElectionResponse(elected_leader_id=leader_id, election_messages=self.election_messages)
+        return election_pb2.ElectionResponse(elected_leader_id=None, election_messages=self.election_messages)
 
     def forward_message(self, process_id):
         if not self.coordinator_message_sent:
@@ -86,7 +87,7 @@ class RingElectionService(election_pb2_grpc.ElectionServicer):
                     stub = election_pb2_grpc.ElectionStub(channel)
                     request = election_pb2.ElectionRequest(process_id=process_id)
                     response = stub.InitiateElection(request)
-                    self.election_messages += 1
+                    self.election_messages += response.election_messages + 1
                     if response.elected_leader_id is not None:
                         self.leader_id = response.elected_leader_id
             except grpc.RpcError as e:
@@ -116,13 +117,13 @@ def run_bully_election(process_id, peers, all_peers):
     with grpc.insecure_channel(f'localhost:5005{process_id}') as channel:
         stub = election_pb2_grpc.ElectionStub(channel)
         response = stub.InitiateElection(election_pb2.ElectionRequest(process_id=process_id))
-    return response.elected_leader_id, response.elected_leader_id
+    return response.elected_leader_id, response.election_messages
 
 def run_ring_election(process_id, peers, all_peers):
     with grpc.insecure_channel(f'localhost:5005{process_id}') as channel:
         stub = election_pb2_grpc.ElectionStub(channel)
         response = stub.InitiateElection(election_pb2.ElectionRequest(process_id=process_id))
-    return response.elected_leader_id, response.elected_leader_id
+    return response.elected_leader_id, response.election_messages
 
 def visualize_elections():
     num_processes = 5
@@ -140,12 +141,11 @@ def visualize_elections():
 
     # Run Bully Algorithm
     for process_id in range(num_processes):
-        peers = [peer for peer in all_peers if peer != f"localhost:5005{process_id}"]
         logging.info(f'Starting Bully Algorithm for Process {process_id}')
-        messages, leader = run_bully_election(process_id, peers, all_peers)
-        bully_messages.append(messages)
+        leader, messages = run_bully_election(process_id, None, all_peers)
         if leader is not None:
             bully_leader = leader
+        bully_messages.append(messages)
 
     # Stop Bully Servers
     for server in bully_servers:
@@ -163,10 +163,10 @@ def visualize_elections():
     # Run Ring Algorithm
     for process_id in range(num_processes):
         logging.info(f'Starting Ring Algorithm for Process {process_id}')
-        messages, leader = run_ring_election(process_id, peers, all_peers)
-        ring_messages.append(messages)
+        leader, messages = run_ring_election(process_id, peers, all_peers)
         if leader is not None:
             ring_leader = leader
+        ring_messages.append(messages)
 
     # Stop Ring Servers
     for server in ring_servers:

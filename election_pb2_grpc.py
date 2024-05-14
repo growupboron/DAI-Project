@@ -31,7 +31,8 @@ if _version_not_supported:
 
 
 class ElectionStub(object):
-    """Missing associated documentation comment in .proto file."""
+    """The election service definition.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -40,19 +41,20 @@ class ElectionStub(object):
             channel: A grpc.Channel.
         """
         self.InitiateElection = channel.unary_unary(
-                '/Election/InitiateElection',
+                '/election.Election/InitiateElection',
                 request_serializer=election__pb2.ElectionRequest.SerializeToString,
                 response_deserializer=election__pb2.ElectionResponse.FromString,
                 _registered_method=True)
         self.RespondToElection = channel.unary_unary(
-                '/Election/RespondToElection',
+                '/election.Election/RespondToElection',
                 request_serializer=election__pb2.ElectionRequest.SerializeToString,
                 response_deserializer=election__pb2.ElectionResponse.FromString,
                 _registered_method=True)
 
 
 class ElectionServicer(object):
-    """Missing associated documentation comment in .proto file."""
+    """The election service definition.
+    """
 
     def InitiateElection(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -81,13 +83,14 @@ def add_ElectionServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'Election', rpc_method_handlers)
+            'election.Election', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
  # This class is part of an EXPERIMENTAL API.
 class Election(object):
-    """Missing associated documentation comment in .proto file."""
+    """The election service definition.
+    """
 
     @staticmethod
     def InitiateElection(request,
@@ -103,7 +106,7 @@ class Election(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/Election/InitiateElection',
+            '/election.Election/InitiateElection',
             election__pb2.ElectionRequest.SerializeToString,
             election__pb2.ElectionResponse.FromString,
             options,
@@ -130,7 +133,7 @@ class Election(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/Election/RespondToElection',
+            '/election.Election/RespondToElection',
             election__pb2.ElectionRequest.SerializeToString,
             election__pb2.ElectionResponse.FromString,
             options,
