@@ -36,12 +36,27 @@ class BullyElectionService(election_pb2_grpc.ElectionServicer):
                     logging.info(f'Process {self.process_id} failed to contact {peer}')
                     continue
             self.leader_id = max_id
+            self.announce_coordinator(max_id)
             return election_pb2.ElectionResponse(elected_leader_id=max_id, election_messages=self.election_messages)
+
+    def announce_coordinator(self, leader_id):
+        for peer in self.peers:
+            try:
+                with grpc.insecure_channel(peer) as channel:
+                    stub = election_pb2_grpc.ElectionStub(channel)
+                    stub.CoordinatorAnnouncement(election_pb2.ElectionRequest(process_id=leader_id))
+            except grpc.RpcError:
+                continue
 
     def RespondToElection(self, request, context):
         logging.info(f'Process {self.process_id} received election response from {request.process_id}')
         self.election_messages += 1
         return election_pb2.ElectionResponse(elected_leader_id=self.process_id, election_messages=self.election_messages)
+
+    def CoordinatorAnnouncement(self, request, context):
+        logging.info(f'Process {self.process_id} received coordinator announcement with leader ID {request.process_id}')
+        self.leader_id = request.process_id
+        return election_pb2.ElectionResponse(elected_leader_id=self.leader_id, election_messages=self.election_messages)
 
 def serve_bully(process_id, peers):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))

@@ -50,6 +50,11 @@ class ElectionStub(object):
                 request_serializer=election__pb2.ElectionRequest.SerializeToString,
                 response_deserializer=election__pb2.ElectionResponse.FromString,
                 _registered_method=True)
+        self.CoordinatorAnnouncement = channel.unary_unary(
+                '/election.Election/CoordinatorAnnouncement',
+                request_serializer=election__pb2.ElectionRequest.SerializeToString,
+                response_deserializer=election__pb2.ElectionResponse.FromString,
+                _registered_method=True)
 
 
 class ElectionServicer(object):
@@ -68,6 +73,12 @@ class ElectionServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CoordinatorAnnouncement(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ElectionServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -78,6 +89,11 @@ def add_ElectionServicer_to_server(servicer, server):
             ),
             'RespondToElection': grpc.unary_unary_rpc_method_handler(
                     servicer.RespondToElection,
+                    request_deserializer=election__pb2.ElectionRequest.FromString,
+                    response_serializer=election__pb2.ElectionResponse.SerializeToString,
+            ),
+            'CoordinatorAnnouncement': grpc.unary_unary_rpc_method_handler(
+                    servicer.CoordinatorAnnouncement,
                     request_deserializer=election__pb2.ElectionRequest.FromString,
                     response_serializer=election__pb2.ElectionResponse.SerializeToString,
             ),
@@ -134,6 +150,33 @@ class Election(object):
             request,
             target,
             '/election.Election/RespondToElection',
+            election__pb2.ElectionRequest.SerializeToString,
+            election__pb2.ElectionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CoordinatorAnnouncement(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/election.Election/CoordinatorAnnouncement',
             election__pb2.ElectionRequest.SerializeToString,
             election__pb2.ElectionResponse.FromString,
             options,

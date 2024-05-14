@@ -17,4 +17,5 @@ message ElectionResponse {
 service Election {
   rpc InitiateElection (ElectionRequest) returns (ElectionResponse);
   rpc RespondToElection (ElectionRequest) returns (ElectionResponse);
+  rpc CoordinatorAnnouncement (ElectionRequest) returns (ElectionResponse);
 }
