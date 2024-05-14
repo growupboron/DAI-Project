@@ -29,29 +29,32 @@ class BullyElectionService(election_pb2_grpc.ElectionServicer):
                     with grpc.insecure_channel(peer) as channel:
                         stub = election_pb2_grpc.ElectionStub(channel)
                         response = stub.RespondToElection(election_pb2.ElectionRequest(process_id=self.process_id))
+                        if response.elected_leader_id > self.process_id:
+                            self.election_messages += response.election_messages + 1
+                            return election_pb2.ElectionResponse(elected_leader_id=response.elected_leader_id, election_messages=self.election_messages)
                         max_id = max(max_id, response.elected_leader_id)
                         self.election_messages += response.election_messages + 1
                         logging.info(f'Process {self.process_id} received response from {peer} with leader ID {response.elected_leader_id}')
                 except grpc.RpcError:
                     logging.info(f'Process {self.process_id} failed to contact {peer}')
                     continue
-            self.leader_id = max_id
             self.announce_coordinator(max_id)
             return election_pb2.ElectionResponse(elected_leader_id=max_id, election_messages=self.election_messages)
 
+    def RespondToElection(self, request, context):
+        logging.info(f'Process {self.process_id} received election response from {request.process_id}')
+        self.election_messages += 1
+        return election_pb2.ElectionResponse(elected_leader_id=self.process_id, election_messages=self.election_messages)
+
     def announce_coordinator(self, leader_id):
+        logging.info(f'Process {self.process_id} announcing coordinator with leader ID {leader_id}')
         for peer in self.peers:
             try:
                 with grpc.insecure_channel(peer) as channel:
                     stub = election_pb2_grpc.ElectionStub(channel)
                     stub.CoordinatorAnnouncement(election_pb2.ElectionRequest(process_id=leader_id))
             except grpc.RpcError:
-                continue
-
-    def RespondToElection(self, request, context):
-        logging.info(f'Process {self.process_id} received election response from {request.process_id}')
-        self.election_messages += 1
-        return election_pb2.ElectionResponse(elected_leader_id=self.process_id, election_messages=self.election_messages)
+                logging.info(f'Process {self.process_id} failed to contact {peer}')
 
     def CoordinatorAnnouncement(self, request, context):
         logging.info(f'Process {self.process_id} received coordinator announcement with leader ID {request.process_id}')
@@ -107,6 +110,8 @@ class RingElectionService(election_pb2_grpc.ElectionServicer):
                         self.leader_id = response.elected_leader_id
             except grpc.RpcError as e:
                 logging.info(f'Process {self.process_id} failed to forward message to {self.next_peer}: {e}')
+                self.next_peer = self.find_next_peer()
+                self.forward_message(process_id)
 
     def send_coordinator_message(self, leader_id):
         if not self.coordinator_message_sent:
@@ -116,10 +121,16 @@ class RingElectionService(election_pb2_grpc.ElectionServicer):
                 with grpc.insecure_channel(self.next_peer) as channel:
                     stub = election_pb2_grpc.ElectionStub(channel)
                     request = election_pb2.ElectionRequest(process_id=leader_id)
-                    stub.InitiateElection(request)
+                    stub.CoordinatorAnnouncement(request)
                     self.election_messages += 1
             except grpc.RpcError as e:
                 logging.info(f'Process {self.process_id} failed to send coordinator message to {self.next_peer}: {e}')
+
+    def CoordinatorAnnouncement(self, request, context):
+        logging.info(f'Process {self.process_id} received coordinator announcement with leader ID {request.process_id}')
+        self.leader_id = request.process_id
+        self.election_messages += 1
+        return election_pb2.ElectionResponse(elected_leader_id=self.leader_id, election_messages=self.election_messages)
 
 def serve_ring(process_id, peers, all_peers):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
