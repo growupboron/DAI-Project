@@ -2,6 +2,7 @@ import grpc
 from concurrent import futures
 import time
 import logging
+import threading
 import election_pb2
 import election_pb2_grpc
 import matplotlib.pyplot as plt
@@ -14,6 +15,15 @@ class BullyElectionService(election_pb2_grpc.ElectionServicer):
         self.peers = peers
         self.leader_id = None
         self.election_messages = 0
+        self.active = True
+        self.failure_detection_thread = threading.Thread(target=self.detect_failure)
+
+    def start_failure_detection(self):
+        self.failure_detection_thread.start()
+
+    def stop_failure_detection(self):
+        self.active = False
+        self.failure_detection_thread.join()
 
     def InitiateElection(self, request, context):
         logging.info(f'Process {self.process_id} received election initiation from {request.process_id}')
@@ -61,6 +71,23 @@ class BullyElectionService(election_pb2_grpc.ElectionServicer):
         self.leader_id = request.process_id
         return election_pb2.ElectionResponse(elected_leader_id=self.leader_id, election_messages=self.election_messages)
 
+    def detect_failure(self):
+        while self.active:
+            if self.leader_id is not None:
+                try:
+                    with grpc.insecure_channel(f'localhost:5005{self.leader_id}') as channel:
+                        stub = election_pb2_grpc.ElectionStub(channel)
+                        response = stub.Heartbeat(election_pb2.HeartbeatRequest())
+                        if response.status != 'alive':
+                            raise grpc.RpcError
+                except grpc.RpcError:
+                    logging.info(f'Process {self.process_id} detected leader failure, initiating election')
+                    self.InitiateElection(election_pb2.ElectionRequest(process_id=self.process_id), None)
+            time.sleep(2)
+
+    def Heartbeat(self, request, context):
+        return election_pb2.HeartbeatResponse(status='alive')
+
 def serve_bully(process_id, peers):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     election_pb2_grpc.add_ElectionServicer_to_server(BullyElectionService(process_id, peers), server)
@@ -78,6 +105,15 @@ class RingElectionService(election_pb2_grpc.ElectionServicer):
         self.election_messages = 0
         self.received_messages = set()
         self.coordinator_message_sent = False
+        self.active = True
+        self.failure_detection_thread = threading.Thread(target=self.detect_failure)
+
+    def start_failure_detection(self):
+        self.failure_detection_thread.start()
+
+    def stop_failure_detection(self):
+        self.active = False
+        self.failure_detection_thread.join()
 
     def find_next_peer(self):
         current_index = self.all_peers.index(f"localhost:5005{self.process_id}")
@@ -132,6 +168,23 @@ class RingElectionService(election_pb2_grpc.ElectionServicer):
         self.election_messages += 1
         return election_pb2.ElectionResponse(elected_leader_id=self.leader_id, election_messages=self.election_messages)
 
+    def detect_failure(self):
+        while self.active:
+            if self.leader_id is not None:
+                try:
+                    with grpc.insecure_channel(f'localhost:5005{self.leader_id}') as channel:
+                        stub = election_pb2_grpc.ElectionStub(channel)
+                        response = stub.Heartbeat(election_pb2.HeartbeatRequest())
+                        if response.status != 'alive':
+                            raise grpc.RpcError
+                except grpc.RpcError:
+                    logging.info(f'Process {self.process_id} detected leader failure, initiating election')
+                    self.InitiateElection(election_pb2.ElectionRequest(process_id=self.process_id), None)
+            time.sleep(2)
+
+    def Heartbeat(self, request, context):
+        return election_pb2.HeartbeatResponse(status='alive')
+
 def serve_ring(process_id, peers, all_peers):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     election_pb2_grpc.add_ElectionServicer_to_server(RingElectionService(process_id, peers, all_peers), server)
@@ -161,9 +214,14 @@ def visualize_elections():
 
     # Start Bully Algorithm Servers
     bully_servers = []
+    bully_threads = []
     for process_id in range(num_processes):
         peers = [peer for peer in all_peers if peer != f"localhost:5005{process_id}"]
-        bully_servers.append(serve_bully(process_id, peers))
+        bully_server = serve_bully(process_id, peers)
+        bully_servers.append(bully_server)
+        bully_election_service = BullyElectionService(process_id, peers)
+        bully_election_service.start_failure_detection()
+        bully_threads.append(bully_election_service)
 
     # Run Bully Algorithm
     for process_id in range(num_processes):
@@ -176,15 +234,22 @@ def visualize_elections():
     # Stop Bully Servers
     for server in bully_servers:
         server.stop(0)
+    for service in bully_threads:
+        service.stop_failure_detection()
 
     # Reset before running Ring Algorithm
     time.sleep(5)
 
     # Start Ring Algorithm Servers
     ring_servers = []
+    ring_threads = []
     for process_id in range(num_processes):
         peers = [peer for peer in all_peers if peer != f"localhost:5005{process_id}"]
-        ring_servers.append(serve_ring(process_id, peers, all_peers))
+        ring_server = serve_ring(process_id, peers, all_peers)
+        ring_servers.append(ring_server)
+        ring_election_service = RingElectionService(process_id, peers, all_peers)
+        ring_election_service.start_failure_detection()
+        ring_threads.append(ring_election_service)
 
     # Run Ring Algorithm
     for process_id in range(num_processes):
@@ -197,6 +262,8 @@ def visualize_elections():
     # Stop Ring Servers
     for server in ring_servers:
         server.stop(0)
+    for service in ring_threads:
+        service.stop_failure_detection()
 
     logging.info(f'Final Bully Leader: {bully_leader}')
     logging.info(f'Final Ring Leader: {ring_leader}')
