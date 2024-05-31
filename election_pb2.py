@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x65lection.proto\x12\x08\x65lection\"%\n\x0f\x45lectionRequest\x12\x12\n\nprocess_id\x18\x01 \x01(\x05\"H\n\x10\x45lectionResponse\x12\x19\n\x11\x65lected_leader_id\x18\x01 \x01(\x05\x12\x19\n\x11\x65lection_messages\x18\x02 \x01(\x05\x32\xf3\x01\n\x08\x45lection\x12I\n\x10InitiateElection\x12\x19.election.ElectionRequest\x1a\x1a.election.ElectionResponse\x12J\n\x11RespondToElection\x12\x19.election.ElectionRequest\x1a\x1a.election.ElectionResponse\x12P\n\x17\x43oordinatorAnnouncement\x12\x19.election.ElectionRequest\x1a\x1a.election.ElectionResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x65lection.proto\x12\x08\x65lection\"%\n\x0f\x45lectionRequest\x12\x12\n\nprocess_id\x18\x01 \x01(\x05\"H\n\x10\x45lectionResponse\x12\x19\n\x11\x65lected_leader_id\x18\x01 \x01(\x05\x12\x19\n\x11\x65lection_messages\x18\x02 \x01(\x05\"\x12\n\x10HeartbeatRequest\"#\n\x11HeartbeatResponse\x12\x0e\n\x06status\x18\x01 \x01(\t2\xb9\x02\n\x08\x45lection\x12I\n\x10InitiateElection\x12\x19.election.ElectionRequest\x1a\x1a.election.ElectionResponse\x12J\n\x11RespondToElection\x12\x19.election.ElectionRequest\x1a\x1a.election.ElectionResponse\x12P\n\x17\x43oordinatorAnnouncement\x12\x19.election.ElectionRequest\x1a\x1a.election.ElectionResponse\x12\x44\n\tHeartbeat\x12\x1a.election.HeartbeatRequest\x1a\x1b.election.HeartbeatResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -25,6 +25,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_ELECTIONREQUEST']._serialized_end=65
   _globals['_ELECTIONRESPONSE']._serialized_start=67
   _globals['_ELECTIONRESPONSE']._serialized_end=139
-  _globals['_ELECTION']._serialized_start=142
-  _globals['_ELECTION']._serialized_end=385
+  _globals['_HEARTBEATREQUEST']._serialized_start=141
+  _globals['_HEARTBEATREQUEST']._serialized_end=159
+  _globals['_HEARTBEATRESPONSE']._serialized_start=161
+  _globals['_HEARTBEATRESPONSE']._serialized_end=196
+  _globals['_ELECTION']._serialized_start=199
+  _globals['_ELECTION']._serialized_end=512
 # @@protoc_insertion_point(module_scope)

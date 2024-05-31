@@ -2,6 +2,14 @@ syntax = "proto3";
 
 package election;
 
+// The election service definition.
+service Election {
+  rpc InitiateElection (ElectionRequest) returns (ElectionResponse);
+  rpc RespondToElection (ElectionRequest) returns (ElectionResponse);
+  rpc CoordinatorAnnouncement (ElectionRequest) returns (ElectionResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
 // The request message containing the process ID.
 message ElectionRequest {
   int32 process_id = 1;
@@ -13,9 +21,8 @@ message ElectionResponse {
   int32 election_messages = 2;
 }
 
-// The election service definition.
-service Election {
-  rpc InitiateElection (ElectionRequest) returns (ElectionResponse);
-  rpc RespondToElection (ElectionRequest) returns (ElectionResponse);
-  rpc CoordinatorAnnouncement (ElectionRequest) returns (ElectionResponse);
+message HeartbeatRequest {}
+
+message HeartbeatResponse {
+  string status = 1;
 }
