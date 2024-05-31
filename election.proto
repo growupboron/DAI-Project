@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+service Election {
+  rpc sendElectionMessage (ElectionMessage) returns (ElectionResponse);
+}
+
+message ElectionMessage {
+  int32 senderId = 1;
+  string type = 2; // ELECTION, OK, COORDINATOR
+  repeated int32 participant_ids = 3; // for Ring algorithm
+}
+
+message ElectionResponse {
+  bool acknowledged = 1;
+}
