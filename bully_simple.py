@@ -110,7 +110,16 @@ def run_server(process):
 
 if __name__ == "__main__":
     
-    peers = [1, 2, 3, 4, 5, 6] # initalize processes
+    num_processes = int(input("Enter the number of processes: "))
+
+    while True:
+        start_process = int(input("Enter the process to start the election: "))
+        if 1 <= start_process <= num_processes:
+            break
+        else:
+            print(f"Invalid input. Please enter a number between 1 and {num_processes}.")
+
+    peers = list(range(1, num_processes + 1))
     ports = {peer: get_free_port() for peer in peers}
     processes = [Process(id, peers, ports) for id in peers]
 
@@ -118,14 +127,13 @@ if __name__ == "__main__":
         threading.Thread(target=run_server, args=(process,)).start()
 
     # Allow servers to start
-    time.sleep(5)
+    time.sleep(1)
 
-    # Simulate an election: start by giving process
-    processes[0].bully_election() #lowest procress: complexity should be n(n-1)
-    #processes[5].bully_election() #highest procress: complexity should be n-1
+    # Start the election from the user-specified process
+    processes[start_process - 1].bully_election() # Complexity: n(n-1) to n-1
 
     # Allow some time for the election process to complete
-    time.sleep(5)
+    time.sleep(1)
 
     # Print final results
     for process in processes:
