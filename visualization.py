@@ -1,4 +1,4 @@
-from election_simple import BullyElection, RingElection
+from election import BullyElection, RingElection
 import matplotlib.pyplot as plt
 import random
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     max_processes = int(input("Enter the max number of processes: "))
     random_init = input("Do you want random initiation? (yes/no): ").lower() == "yes"
     seed = None
-    increment = None
+    increment = 1
     if random_init:
         seed = int(input("Enter a seed for the random number generator: "))
         increment = int(input("Increment step for the experiments: "))

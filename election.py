@@ -12,6 +12,7 @@ total_messages = 0
 
 class BullyProcess:
     def __init__(self, id, peers, ports):
+        # Initialize the process with its id, peers, and ports
         self.id = id
         self.peers = peers
         self.ports = ports
@@ -22,6 +23,7 @@ class BullyProcess:
         self.port = self.ports[self.id] 
 
     def bully_election(self):
+        # This method is used to start the bully election process
         global total_messages
         if self.election_in_progress or self.coordinator is not None:
             return
@@ -43,6 +45,7 @@ class BullyProcess:
                     continue
 
     def election_message(self, sender_id):
+        # This method is used to handle an election message from another process
         if not self.active:
             return
         global total_messages
@@ -58,6 +61,7 @@ class BullyProcess:
             total_messages += 1
 
     def ok_message(self, sender_id):
+        # This method is used to handle an OK message from another process
         global total_messages
         self.log(f"Process {self.id} received OK message from Process {sender_id}")
         self.message_count += 1
@@ -65,6 +69,7 @@ class BullyProcess:
         self.election_in_progress = False
 
     def announce_coordinator(self):
+        # This method is used to announce the new coordinator to all other processes
         global total_messages
         self.log(f"Process {self.id} is the new coordinator")
         for peer_id in self.peers:
@@ -78,6 +83,7 @@ class BullyProcess:
                     continue
 
     def set_coordinator(self, coord_id):
+        # This method is used to set the coordinator of the process
         global total_messages
         self.coordinator = coord_id
         self.log(f"Process {self.id} acknowledges Process {coord_id} as the coordinator")
@@ -130,6 +136,7 @@ def BullyElection(num_processes, start_process):
     return bully_messages
 
 class RingProcess:
+    # Initialize the process with its id, peers, and ports
     def __init__(self, id, peers, ports):
         self.id = id
         self.peers = peers
@@ -141,6 +148,7 @@ class RingProcess:
         self.ring_position = id - 1
 
     def ring_election(self):
+        # This method is used to start the ring election process
         if self.election_in_progress:
             return
         self.election_in_progress = True
@@ -152,6 +160,7 @@ class RingProcess:
         total_messages += 1
 
     def election_message(self, message):
+        # This method is used to handle an election message from another process
         global total_messages
         self.log(f"Process {self.id} received election message: {message}")
         self.message_count += 1
@@ -168,6 +177,7 @@ class RingProcess:
             self.send_message(message, 'election')
 
     def coordinator_message(self, message):
+        # This method is used to handle a coordinator message from another process
         global total_messages
         self.log(f"Process {self.id} received coordinator message: {message}")
         self.coordinator = message[0]
@@ -176,6 +186,7 @@ class RingProcess:
         self.election_in_progress = False
 
     def send_message(self, message, msg_type, recipient_id=None):
+        # This method is used to send a message to another process
         if recipient_id is None:
             recipient_id = self.peers[(self.ring_position + 1) % len(self.peers)]
         try:
