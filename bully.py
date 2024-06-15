@@ -5,21 +5,32 @@ from xmlrpc.client import ServerProxy
 import threading
 import datetime
 import time
+import socket
 
 # Global message counter
 total_messages = 0
+
+def get_free_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("",0))
+    s.listen(1)
+    port = s.getsockname()[1]
+    s.close()
+    return port
 
 class ThreadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
     pass
 
 class Process:
-    def __init__(self, id, peers):
+    def __init__(self, id, peers, ports):
         self.id = id
         self.peers = peers
+        self.ports = ports
         self.coordinator = None
         self.message_count = 0
         self.active = True
         self.election_in_progress = False
+        self.port = self.ports[self.id]  # Assign a unique port to this process
 
     def election(self):
         global total_messages
@@ -35,7 +46,7 @@ class Process:
         else:
             for peer_id in higher_processes:
                 try:
-                    proxy = ServerProxy(f'http://localhost:{5000 + peer_id}')
+                    proxy = ServerProxy(f'http://localhost:{self.ports[peer_id]}')  
                     proxy.election_message(self.id)
                     self.message_count += 1
                     total_messages += 1
@@ -52,7 +63,7 @@ class Process:
         if self.id > sender_id and self.coordinator is None:
             self.election()
         else:
-            proxy = ServerProxy(f'http://localhost:{5000 + sender_id}')
+            proxy = ServerProxy(f'http://localhost:{self.port}')
             proxy.ok_message(self.id)
             self.message_count += 1
             total_messages += 1
@@ -70,7 +81,7 @@ class Process:
         for peer_id in self.peers:
             if peer_id != self.id:
                 try:
-                    proxy = ServerProxy(f'http://localhost:{5000 + peer_id}')
+                    proxy = ServerProxy(f'http://localhost:{self.ports[peer_id]}')  
                     proxy.set_coordinator(self.id)
                     self.message_count += 1
                     total_messages += 1
@@ -93,22 +104,25 @@ class Process:
         self.server.shutdown()  # Shut down the server
 
 def run_server(process):
-    process.server = ThreadedXMLRPCServer(('localhost', 5000 + process.id))
+    process.server = ThreadedXMLRPCServer(('localhost', process.port))  
     process.server.register_instance(process)
     process.server.serve_forever()
 
 if __name__ == "__main__":
-    peers = [1, 2, 3, 4, 5, 6]
-    processes = [Process(id, peers) for id in peers]
+    
+    peers = [1, 2, 3, 4, 5, 6] # initalize processes
+    ports = {peer: get_free_port() for peer in peers}
+    processes = [Process(id, peers, ports) for id in peers]
 
     for process in processes:
         threading.Thread(target=run_server, args=(process,)).start()
 
     # Allow servers to start
-    time.sleep(1)
+    time.sleep(5)
 
-    # Simulate an election
-    processes[0].election()
+    # Simulate an election: start by giving process
+    processes[0].election() #lowest procress: complexity should be n(n-1)
+    #processes[5].election() #highest procress: complexity should be n-1
 
     # Allow some time for the election process to complete
     time.sleep(5)

@@ -5,6 +5,7 @@ from xmlrpc.client import ServerProxy
 import threading
 import datetime
 import time
+import socket
 
 # Global message counter
 total_messages = 0
@@ -12,17 +13,26 @@ total_messages = 0
 class ThreadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
     pass
 
+def get_free_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("",0))
+    s.listen(1)
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
 class Process:
-    def __init__(self, id, peers):
+    def __init__(self, id, peers, ports):
         self.id = id
         self.peers = peers
+        self.ports = ports
         self.coordinator = None
         self.message_count = 0
         self.active = True
         self.election_in_progress = False
         self.ring_position = id - 1
 
-    def start_election(self):
+    def election(self):
         if self.election_in_progress:
             return
         self.election_in_progress = True
@@ -46,6 +56,8 @@ class Process:
         else:
             self.coordinator = max(message)
             self.log(f"Process {self.id} determined new coordinator: {self.coordinator}")
+            self.election_in_progress = False
+        if self.id == self.coordinator:
             self.send_message([self.coordinator], 'coordinator')
 
     def coordinator_message(self, message):
@@ -54,13 +66,14 @@ class Process:
         self.coordinator = message[0]
         self.message_count += 1
         total_messages += 1
-        if self.coordinator != self.id:
+        if self.id != self.coordinator:  # Only forward the message if this process is not the new coordinator
             self.send_message(message, 'coordinator')
 
     def send_message(self, message, msg_type):
         next_process_id = self.peers[(self.ring_position + 1) % len(self.peers)]
         try:
-            proxy = ServerProxy(f'http://localhost:{5000 + next_process_id}')
+            next_process_port = self.ports[next_process_id]
+            proxy = ServerProxy(f'http://localhost:{next_process_port}')
             if msg_type == 'election':
                 proxy.election_message(message)
             elif msg_type == 'coordinator':
@@ -70,7 +83,7 @@ class Process:
             total_messages += 1
         except:
             self.log(f"Process {self.id} failed to send {msg_type} message to Process {next_process_id}")
-
+        
     def log(self, message):
         print(f"{datetime.datetime.now()}: {message}")
     
@@ -79,14 +92,15 @@ class Process:
         self.server.shutdown()  # Shut down the server
 
 def run_server(process):
-    process.server = ThreadedXMLRPCServer(('localhost', 5000 + process.id))
+    process.server = ThreadedXMLRPCServer(('localhost', process.ports[process.id]))
     process.server.register_instance(process)
     process.server.serve_forever()
 
 if __name__ == "__main__":
     peers = [1, 2, 3, 4, 5]
-    processes = [Process(id, peers) for id in peers]
-
+    ports = {peer: get_free_port() for peer in peers}
+    processes = [Process(id, peers, ports) for id in peers]
+ 
     for process in processes:
         threading.Thread(target=run_server, args=(process,)).start()
 
@@ -94,7 +108,11 @@ if __name__ == "__main__":
     time.sleep(1)
 
     # Simulate an election
-    processes[0].start_election()
+    processes[0].election() #lowest procress: complexity should be 2n
+    #processes[1].election() #procress: complexity should be 2n
+    #processes[2].election() #procress: complexity should be 2n
+    #processes[3].election() #procress: complexity should be 2n
+    #processes[4].election() #highest procress: complexity should be 2n
 
     # Allow some time for the election process to complete
     time.sleep(5)
