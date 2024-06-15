@@ -101,6 +101,8 @@ def bully_run_server(process):
     process.server.serve_forever()
 
 def BullyElection(num_processes, start_process):
+    global total_messages
+    total_messages = 0
     peers = list(range(1, num_processes + 1))
     ports = {peer: get_free_port() for peer in peers}
     processes = [BullyProcess(id, peers, ports) for id in peers]
@@ -203,6 +205,8 @@ def ring_run_server(process):
     process.server.serve_forever()
 
 def RingElection(num_processes, start_process):
+    global total_messages
+    total_messages = 0
     peers = list(range(1, num_processes + 1))
     ports = {peer: get_free_port() for peer in peers}
     processes = [RingProcess(id, peers, ports) for id in peers]
