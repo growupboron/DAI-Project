@@ -93,45 +93,45 @@ def run_server(process):
     process.server.register_instance(process)
     process.server.serve_forever()
 
-if __name__ == "__main__":
-    
+def user_input():
     num_processes = int(input("Enter the number of processes: "))
-
     while True:
         start_process = int(input("Enter the process to start the election: "))
         if 1 <= start_process <= num_processes:
             break
         else:
             print(f"Invalid input. Please enter a number between 1 and {num_processes}.")
-
     peers = list(range(1, num_processes + 1))
     ports = {peer: get_free_port() for peer in peers}
     processes = [Process(id, peers, ports) for id in peers]
+    return processes, start_process
 
+def ringelection(processes, start_process):
     for process in processes:
         threading.Thread(target=run_server, args=(process,)).start()
-
     # Allow servers to start
     time.sleep(1)
-
     # Start the election from the user-specified process
     processes[start_process - 1].ring_election() # Complexity: 2n
-
     # Allow some time for the election process to complete
     time.sleep(1)
-
+    print("Ring Election Algorithm")
     # Print final results
     for process in processes:
         process.log(f"Process {process.id} - Coordinator: {process.coordinator} - Messages Exchanged: {process.message_count}")
-
     # Print total messages exchanged
     print(f"Total messages exchanged: {total_messages}")
-    
+    ring_messages = total_messages
     # Stop all processes
     for process in processes:
         process.stop()
-
     # Wait for all threads to finish
     for thread in threading.enumerate():
         if thread is not threading.main_thread():
             thread.join()
+    return ring_messages
+
+if __name__ == "__main__":
+    print("Ring Election")
+    processes, start_process = user_input()
+    ringelection(processes, start_process)
