@@ -11,6 +11,7 @@ import socket
 total_messages = 0
 
 class ThreadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
+    allow_none = True
     pass
 
 def get_free_port():
@@ -32,7 +33,7 @@ class Process:
         self.election_in_progress = False
         self.ring_position = id - 1
 
-    def election(self):
+    def ring_election(self):
         if self.election_in_progress:
             return
         self.election_in_progress = True
@@ -44,21 +45,20 @@ class Process:
         total_messages += 1
 
     def election_message(self, message):
-        if not self.active:
-            return
         global total_messages
         self.log(f"Process {self.id} received election message: {message}")
         self.message_count += 1
         total_messages += 1
-        if self.id not in message:
-            message.append(self.id)
-            self.send_message(message, 'election')
-        else:
+        message.append(self.id)
+        if message[0] == self.id:
             self.coordinator = max(message)
             self.log(f"Process {self.id} determined new coordinator: {self.coordinator}")
-            self.election_in_progress = False
-        if self.id == self.coordinator:
-            self.send_message([self.coordinator], 'coordinator')
+            # Send coordinator message to all other processes
+            for process_id in self.peers:
+                if process_id != self.id:
+                    self.send_message([self.coordinator], 'coordinator', process_id)
+        else:
+            self.send_message(message, 'election')
 
     def coordinator_message(self, message):
         global total_messages
@@ -66,23 +66,20 @@ class Process:
         self.coordinator = message[0]
         self.message_count += 1
         total_messages += 1
-        if self.id != self.coordinator:  # Only forward the message if this process is not the new coordinator
-            self.send_message(message, 'coordinator')
+        self.election_in_progress = False
 
-    def send_message(self, message, msg_type):
-        next_process_id = self.peers[(self.ring_position + 1) % len(self.peers)]
+    def send_message(self, message, msg_type, recipient_id=None):
+        if recipient_id is None:
+            recipient_id = self.peers[(self.ring_position + 1) % len(self.peers)]
         try:
-            next_process_port = self.ports[next_process_id]
-            proxy = ServerProxy(f'http://localhost:{next_process_port}')
+            recipient_port = self.ports[recipient_id]
+            proxy = ServerProxy(f'http://localhost:{recipient_port}', allow_none=True)
             if msg_type == 'election':
                 proxy.election_message(message)
             elif msg_type == 'coordinator':
                 proxy.coordinator_message(message)
-            self.message_count += 1
-            global total_messages
-            total_messages += 1
-        except:
-            self.log(f"Process {self.id} failed to send {msg_type} message to Process {next_process_id}")
+        except Exception as e:
+            self.log(f"Process {self.id} failed to send {msg_type} message to Process {recipient_id}: {e}")
         
     def log(self, message):
         print(f"{datetime.datetime.now()}: {message}")
@@ -92,12 +89,12 @@ class Process:
         self.server.shutdown()  # Shut down the server
 
 def run_server(process):
-    process.server = ThreadedXMLRPCServer(('localhost', process.ports[process.id]))
+    process.server = ThreadedXMLRPCServer(('localhost', process.ports[process.id]), allow_none=True)
     process.server.register_instance(process)
     process.server.serve_forever()
 
 if __name__ == "__main__":
-    peers = [1, 2, 3, 4, 5]
+    peers = [1, 2, 3, 4, 5, 6]
     ports = {peer: get_free_port() for peer in peers}
     processes = [Process(id, peers, ports) for id in peers]
  
@@ -108,11 +105,8 @@ if __name__ == "__main__":
     time.sleep(1)
 
     # Simulate an election
-    processes[0].election() #lowest procress: complexity should be 2n
-    #processes[1].election() #procress: complexity should be 2n
-    #processes[2].election() #procress: complexity should be 2n
-    #processes[3].election() #procress: complexity should be 2n
-    #processes[4].election() #highest procress: complexity should be 2n
+    processes[0].ring_election() #lowest procress: complexity should be 2n
+    #processes[4].ring_election() #highest procress: complexity should be 2n
 
     # Allow some time for the election process to complete
     time.sleep(5)
@@ -123,7 +117,7 @@ if __name__ == "__main__":
 
     # Print total messages exchanged
     print(f"Total messages exchanged: {total_messages}")
-
+    
     # Stop all processes
     for process in processes:
         process.stop()

@@ -32,7 +32,7 @@ class Process:
         self.election_in_progress = False
         self.port = self.ports[self.id]  # Assign a unique port to this process
 
-    def election(self):
+    def bully_election(self):
         global total_messages
         if self.election_in_progress or self.coordinator is not None:
             return
@@ -61,7 +61,7 @@ class Process:
         self.message_count += 1
         total_messages += 1
         if self.id > sender_id and self.coordinator is None:
-            self.election()
+            self.bully_election()
         else:
             proxy = ServerProxy(f'http://localhost:{self.port}')
             proxy.ok_message(self.id)
@@ -121,8 +121,8 @@ if __name__ == "__main__":
     time.sleep(5)
 
     # Simulate an election: start by giving process
-    processes[0].election() #lowest procress: complexity should be n(n-1)
-    #processes[5].election() #highest procress: complexity should be n-1
+    processes[0].bully_election() #lowest procress: complexity should be n(n-1)
+    #processes[5].bully_election() #highest procress: complexity should be n-1
 
     # Allow some time for the election process to complete
     time.sleep(5)
